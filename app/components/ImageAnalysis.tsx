@@ -12,12 +12,21 @@ export default function ImageAnalysis() {
   const [analysisType, setAnalysisType] = useState("");
   const [result, setResult] = useState("");
   const [confidence, setConfidence] = useState("");
+
   const [showAddForm, setShowAddForm] = useState(false);
   const [newEvidenceId, setNewEvidenceId] = useState("1");
   const [newImagePath, setNewImagePath] = useState("");
   const [newAnalysisType, setNewAnalysisType] = useState("");
   const [newResult, setNewResult] = useState("");
   const [newConfidence, setNewConfidence] = useState("0.90");
+
+  // Image comparison state
+  const [comparisonEvidenceId, setComparisonEvidenceId] = useState("1");
+  const [firstFile, setFirstFile] = useState<File | null>(null);
+  const [secondFile, setSecondFile] = useState<File | null>(null);
+  const [comparing, setComparing] = useState(false);
+  const [comparisonError, setComparisonError] = useState("");
+  const [comparisonMessage, setComparisonMessage] = useState("");
 
   async function fetchRecords() {
     try {
@@ -29,6 +38,7 @@ export default function ImageAnalysis() {
       }
 
       setRecords(data.records);
+      setError("");
     } catch {
       setError("Unable to load image analysis records.");
     } finally {
@@ -39,6 +49,96 @@ export default function ImageAnalysis() {
   useEffect(() => {
     fetchRecords();
   }, []);
+
+  async function uploadImage(file: File) {
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const response = await fetch("/api/image-upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Image upload failed.");
+    }
+
+    return data.imagePath as string;
+  }
+
+  async function handleCompare() {
+    if (!firstFile || !secondFile) {
+      setComparisonError("Please select both images.");
+      return;
+    }
+
+    if (firstFile.size === 0 || secondFile.size === 0) {
+      setComparisonError("Please select valid image files.");
+      return;
+    }
+
+    if (Number(comparisonEvidenceId) < 1 ||
+        !Number.isInteger(Number(comparisonEvidenceId))) {
+      setComparisonError("Please enter a valid evidence ID.");
+      return;
+    }
+
+    setComparing(true);
+    setComparisonError("");
+    setComparisonMessage("");
+
+    try {
+      // Upload both images
+      const image1 = await uploadImage(firstFile);
+      const image2 = await uploadImage(secondFile);
+
+      // Compare the uploaded images
+      const response = await fetch("/api/image-compare", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          image1,
+          image2,
+          evidenceId: Number(comparisonEvidenceId),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Image comparison failed.");
+      }
+
+      setComparisonMessage(
+        `Comparison completed! Pixel similarity estimate: ${data.comparison.similarity}%`
+      );
+
+      setFirstFile(null);
+      setSecondFile(null);
+
+      // Reset file inputs
+      const inputs = document.querySelectorAll<HTMLInputElement>(
+        ".comparison-file-input"
+      );
+      inputs.forEach((input) => {
+        input.value = "";
+      });
+
+      await fetchRecords();
+    } catch (error) {
+      setComparisonError(
+        error instanceof Error
+          ? error.message
+          : "Unable to compare images."
+      );
+    } finally {
+      setComparing(false);
+    }
+  }
 
   function handleEdit(record: any) {
     setEditingId(record._id);
@@ -52,43 +152,42 @@ export default function ImageAnalysis() {
   }
 
   async function handleCreate() {
-  try {
-    const response = await fetch("/api/image-analysis", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        evidenceId: Number(newEvidenceId),
-        imagePath: newImagePath,
-        analysisType: newAnalysisType,
-        result: newResult,
-        confidence: Number(newConfidence),
-      }),
-    });
+    try {
+      const response = await fetch("/api/image-analysis", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          evidenceId: Number(newEvidenceId),
+          imagePath: newImagePath,
+          analysisType: newAnalysisType,
+          result: newResult,
+          confidence: Number(newConfidence),
+        }),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok || !data.success) {
-      throw new Error(data.message || "Failed to create record");
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to create record");
+      }
+
+      setShowAddForm(false);
+      setNewEvidenceId("1");
+      setNewImagePath("");
+      setNewAnalysisType("");
+      setNewResult("");
+      setNewConfidence("0.90");
+
+      await fetchRecords();
+      alert("Image analysis record created successfully!");
+    } catch (error) {
+      alert(
+        error instanceof Error ? error.message : "Unable to create record."
+      );
     }
-
-    setShowAddForm(false);
-    setNewEvidenceId("1");
-    setNewImagePath("");
-    setNewAnalysisType("");
-    setNewResult("");
-    setNewConfidence("0.90");
-
-    await fetchRecords();
-
-    alert("Image analysis record created successfully!");
-  } catch (error) {
-    alert(
-      error instanceof Error ? error.message : "Unable to create record."
-    );
   }
-}
 
   async function handleUpdate(id: string) {
     try {
@@ -144,7 +243,7 @@ export default function ImageAnalysis() {
       );
     } catch (error) {
       alert(
-        error instanceof Error ? error.message : "Unable to delete the record."
+        error instanceof Error ? error.message : "Unable to delete record."
       );
     }
   }
@@ -155,88 +254,163 @@ export default function ImageAnalysis() {
         Image Analysis
       </h2>
 
-      <div className="mb-5">
-  <button
-    onClick={() => setShowAddForm(!showAddForm)}
-    className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700"
-  >
-    {showAddForm ? "Cancel" : "+ Add New Analysis"}
-  </button>
-</div>
-
-{showAddForm && (
-  <div className="border border-gray-200 rounded-lg p-4 mb-5 space-y-3">
-    <h3 className="font-semibold text-gray-800">
-      Add Image Analysis Record
-    </h3>
-
-    <input
-      type="number"
-      min="1"
-      placeholder="Evidence ID"
-      value={newEvidenceId}
-      onChange={(e) => setNewEvidenceId(e.target.value)}
-      className="w-full border rounded-md p-2 text-sm"
-    />
-
-    <input
-      type="text"
-      placeholder="Image Path"
-      value={newImagePath}
-      onChange={(e) => setNewImagePath(e.target.value)}
-      className="w-full border rounded-md p-2 text-sm"
-    />
-
-    <input
-      type="text"
-      placeholder="Analysis Type"
-      value={newAnalysisType}
-      onChange={(e) => setNewAnalysisType(e.target.value)}
-      className="w-full border rounded-md p-2 text-sm"
-    />
-
-    <textarea
-      placeholder="Analysis Result"
-      value={newResult}
-      onChange={(e) => setNewResult(e.target.value)}
-      className="w-full border rounded-md p-2 text-sm"
-      rows={3}
-    />
-
-    <input
-      type="number"
-      min="0"
-      max="1"
-      step="0.01"
-      placeholder="Confidence (0 to 1)"
-      value={newConfidence}
-      onChange={(e) => setNewConfidence(e.target.value)}
-      className="w-full border rounded-md p-2 text-sm"
-    />
-
-    <button
-      onClick={handleCreate}
-      disabled={
-        !newEvidenceId ||
-        Number(newEvidenceId) < 1 ||
-        !newImagePath.trim() ||
-        !newAnalysisType.trim() ||
-        !newResult.trim() ||
-        newConfidence === "" ||
-        !Number.isFinite(Number(newConfidence)) ||
-        Number(newConfidence) < 0 ||
-        Number(newConfidence) > 1
-      }
-      className="bg-green-600 text-white px-4 py-2 rounded-md text-sm hover:bg-green-700 disabled:opacity-50"
-    >
-      Save Analysis
-    </button>
-  </div>
-)}
-
       <p className="text-sm text-gray-500 mb-5">
-        Image processing and comparison records stored in MongoDB.
+        Upload and compare forensic images using ImageMagick. Analysis
+        records are stored in MongoDB.
       </p>
+
+      {/* Image Comparison */}
+      <div className="border border-blue-200 bg-blue-50 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-gray-800 mb-3">
+          Compare Two Images
+        </h3>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">
+              Evidence ID
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={comparisonEvidenceId}
+              onChange={(e) => setComparisonEvidenceId(e.target.value)}
+              className="w-full border rounded-md p-2 text-sm bg-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">
+              First Image
+            </label>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) =>
+                setFirstFile(e.target.files?.[0] || null)
+              }
+              className="comparison-file-input w-full border rounded-md p-2 text-sm bg-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">
+              Second Image
+            </label>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) =>
+                setSecondFile(e.target.files?.[0] || null)
+              }
+              className="comparison-file-input w-full border rounded-md p-2 text-sm bg-white"
+            />
+          </div>
+
+          {comparisonError && (
+            <p className="text-sm text-red-600">{comparisonError}</p>
+          )}
+
+          {comparisonMessage && (
+            <p className="text-sm text-green-700">
+              {comparisonMessage}
+            </p>
+          )}
+
+          <button
+            onClick={handleCompare}
+            disabled={comparing || !firstFile || !secondFile}
+            className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
+          >
+            {comparing ? "Uploading and Comparing..." : "Compare Images"}
+          </button>
+        </div>
+      </div>
+
+      {/* Manual CRUD */}
+      <div className="mb-5">
+        <button
+          onClick={() => setShowAddForm(!showAddForm)}
+          className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700"
+        >
+          {showAddForm ? "Cancel" : "+ Add New Analysis"}
+        </button>
+      </div>
+
+      {showAddForm && (
+        <div className="border border-gray-200 rounded-lg p-4 mb-5 space-y-3">
+          <h3 className="font-semibold text-gray-800">
+            Add Image Analysis Record
+          </h3>
+
+          <input
+            type="number"
+            min="1"
+            placeholder="Evidence ID"
+            value={newEvidenceId}
+            onChange={(e) => setNewEvidenceId(e.target.value)}
+            className="w-full border rounded-md p-2 text-sm"
+          />
+
+          <input
+            type="text"
+            placeholder="Image Path"
+            value={newImagePath}
+            onChange={(e) => setNewImagePath(e.target.value)}
+            className="w-full border rounded-md p-2 text-sm"
+          />
+
+          <input
+            type="text"
+            placeholder="Analysis Type"
+            value={newAnalysisType}
+            onChange={(e) => setNewAnalysisType(e.target.value)}
+            className="w-full border rounded-md p-2 text-sm"
+          />
+
+          <textarea
+            placeholder="Analysis Result"
+            value={newResult}
+            onChange={(e) => setNewResult(e.target.value)}
+            className="w-full border rounded-md p-2 text-sm"
+            rows={3}
+          />
+
+          <input
+            type="number"
+            min="0"
+            max="1"
+            step="0.01"
+            placeholder="Confidence (0 to 1)"
+            value={newConfidence}
+            onChange={(e) => setNewConfidence(e.target.value)}
+            className="w-full border rounded-md p-2 text-sm"
+          />
+
+          <button
+            onClick={handleCreate}
+            disabled={
+              !newEvidenceId ||
+              Number(newEvidenceId) < 1 ||
+              !newImagePath.trim() ||
+              !newAnalysisType.trim() ||
+              !newResult.trim() ||
+              newConfidence === "" ||
+              !Number.isFinite(Number(newConfidence)) ||
+              Number(newConfidence) < 0 ||
+              Number(newConfidence) > 1
+            }
+            className="bg-green-600 text-white px-4 py-2 rounded-md text-sm hover:bg-green-700 disabled:opacity-50"
+          >
+            Save Analysis
+          </button>
+        </div>
+      )}
+
+      {/* Analysis History */}
+      <h3 className="font-semibold text-gray-800 mb-3">
+        Analysis History
+      </h3>
 
       {loading ? (
         <p className="text-gray-500">Loading records...</p>
@@ -321,10 +495,15 @@ export default function ImageAnalysis() {
                 </div>
               ) : (
                 <>
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-semibold text-gray-800">
-                      {record.analysisType}
-                    </h3>
+                  <div className="flex justify-between items-center mb-3 gap-2">
+                    <div>
+                      <h3 className="font-semibold text-gray-800">
+                        {record.analysisType}
+                      </h3>
+                      <p className="text-xs text-gray-500">
+                        Evidence ID: {record.evidenceId}
+                      </p>
+                    </div>
 
                     <div className="flex gap-2">
                       <button
@@ -343,31 +522,97 @@ export default function ImageAnalysis() {
                     </div>
                   </div>
 
-                  <p className="text-sm text-gray-600 mb-2">
-                    <strong>Image:</strong> {record.imagePath}
-                  </p>
+                  {record.image1 && record.image2 ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">
+                            First Image
+                          </p>
+                          <img
+                            src={record.image1}
+                            alt="First comparison image"
+                            className="w-full max-h-48 object-contain border rounded-md bg-gray-50"
+                          />
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">
+                            Second Image
+                          </p>
+                          <img
+                            src={record.image2}
+                            alt="Second comparison image"
+                            className="w-full max-h-48 object-contain border rounded-md bg-gray-50"
+                          />
+                        </div>
+                      </div>
+
+                      {record.differenceImage && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">
+                            Difference Image
+                          </p>
+                          <img
+                            src={record.differenceImage}
+                            alt="ImageMagick difference output"
+                            className="w-full max-h-48 object-contain border rounded-md bg-gray-50"
+                          />
+                        </div>
+                      )}
+
+                      <p className="text-sm text-gray-700">
+                        <strong>Pixel similarity score:</strong>{" "}
+                        {typeof record.similarity === "number"
+                        ? `${record.similarity}%`
+                        : "Not available"}
+                     </p>
+
+                     <p className="text-xs text-gray-500">
+                       Normalized RMSE: {record.normalizedError ?? "Not available"}
+                     </p>
+
+                      <p className="text-xs text-gray-500">
+                        Tool: {record.tool || "Not available"}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm text-gray-600 mb-2 break-all">
+                        <strong>Image:</strong>{" "}
+                        {record.imagePath || "Not available"}
+                      </p>
+
+                      <p className="text-sm text-gray-600 mb-2">
+                        <strong>Confidence:</strong>{" "}
+                        {record.confidence !== null &&
+                        record.confidence !== undefined
+                          ? `${(record.confidence * 100).toFixed(1)}%`
+                          : "Not available"}
+                      </p>
+                    </>
+                  )}
 
                   <p className="text-sm text-gray-600 mb-2">
                     <strong>Result:</strong> {record.result}
                   </p>
 
-                  <p className="text-sm text-gray-600 mb-2">
-                    <strong>Confidence:</strong>{" "}
-                    {record.confidence !== null &&
-                    record.confidence !== undefined
-                      ? `${(record.confidence * 100).toFixed(1)}%`
-                      : "Not available"}
+                 {record.analysisType === "Image Comparison" && (
+                   <p className="text-xs text-gray-500 mb-2">
+                       Note: This result is based on pixel-level differences only. It does not
+                       establish whether images have the same source or are authentic.
                   </p>
+             )}
 
-                  <p className="text-xs text-gray-400">
-                    Processed: {new Date(record.processedAt).toLocaleString()}
-                  </p>
+             <p className="text-xs text-gray-400">
+               Processed: {new Date(record.processedAt).toLocaleString()}
+            </p>
 
-                  {record.updatedAt && (
-                    <p className="text-xs text-gray-400">
-                      Updated: {new Date(record.updatedAt).toLocaleString()}
-                    </p>
-                  )}
+             {record.updatedAt && (
+             <p className="text-xs text-gray-400">
+               Updated: {new Date(record.updatedAt).toLocaleString()}
+             </p>
+            )}
                 </>
               )}
             </div>

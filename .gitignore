@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+
+# Uploaded and generated forensic images
+public/uploads/
+test-image.png
+test-image-2.png

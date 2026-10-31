@@ -17,6 +17,16 @@ export default function Home() {
   const [investigatorCount, setInvestigatorCount] = useState(0);
   const [reportCount, setReportCount] = useState(0);
   const [evidence, setEvidence] = useState<any[]>([]);
+  const [showEvidenceForm, setShowEvidenceForm] = useState(false);
+  const [editingEvidenceId, setEditingEvidenceId] = useState<number | null>(null);  
+  const [evidenceForm, setEvidenceForm] = useState({
+      Evidence_Type: "Digital Evidence",
+      Description: "",
+      Collection_Date: "",
+      Storage_Location: "",
+      Case_ID: "",
+      Lab_ID: "",    
+   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reports, setReports] = useState<any[]>([]);
@@ -49,6 +59,163 @@ async function updateCaseStatus(caseId: number, status: string) {
   } catch (error) {
     console.error("Status update failed:", error);
     alert("Could not update case status. Please try again.");
+  }
+}
+
+function openAddEvidenceForm() {
+  setEditingEvidenceId(null);
+  setEvidenceForm({
+    Evidence_Type: "Digital Evidence",
+    Description: "",
+    Collection_Date: "",
+    Storage_Location: "",
+    Case_ID: "",
+    Lab_ID: "",
+  });
+  setShowEvidenceForm(true);
+}
+
+function openEditEvidenceForm(item: any) {
+  setEditingEvidenceId(item.Evidence_ID);
+  setEvidenceForm({
+    Evidence_Type: item.Evidence_Type,
+    Description: item.Description,
+    Collection_Date: new Date(item.Collection_Date).toISOString().split("T")[0],
+    Storage_Location: item.Storage_Location,
+    Case_ID: String(item.Case_ID),
+    Lab_ID: String(item.Lab_ID),
+  });
+  setShowEvidenceForm(true);
+}
+
+async function saveEvidence(event: React.FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+
+  try {
+    const response = await fetch("/api/evidence", {
+      method: editingEvidenceId ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...evidenceForm,
+        Case_ID: Number(evidenceForm.Case_ID),
+        Lab_ID: Number(evidenceForm.Lab_ID),
+        ...(editingEvidenceId ? { Evidence_ID: editingEvidenceId } : {}),
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Could not save evidence.");
+    }
+
+    const updatedResponse = await fetch("/api/evidence");
+    const updatedData = await updatedResponse.json();
+
+    if (!updatedResponse.ok || !updatedData.success) {
+      throw new Error("Evidence saved, but the list could not be refreshed.");
+    }
+
+    setEvidence(updatedData.evidence);
+    setShowEvidenceForm(false);
+    setEditingEvidenceId(null);
+    alert(data.message);
+  } catch (error) {
+    console.error("Saving evidence failed:", error);
+    alert(error instanceof Error ? error.message : "Could not save evidence.");
+  }
+}
+
+async function deleteEvidence(evidenceId: number) {
+  const confirmed = window.confirm(
+    `Are you sure you want to delete Evidence #${evidenceId}?`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const response = await fetch(`/api/evidence?id=${evidenceId}`, {
+      method: "DELETE",
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Could not delete evidence.");
+    }
+
+    setEvidence((previousEvidence) =>
+      previousEvidence.filter((item) => item.Evidence_ID !== evidenceId)
+    );
+
+    alert(data.message);
+  } catch (error) {
+    console.error("Deleting evidence failed:", error);
+    alert(error instanceof Error ? error.message : "Could not delete evidence.");
+  }
+}
+
+function openAddEvidenceForm() {
+  setEditingEvidenceId(null);
+  setEvidenceForm({
+    Evidence_Type: "Digital Evidence",
+    Description: "",
+    Collection_Date: "",
+    Storage_Location: "",
+    Case_ID: "",
+    Lab_ID: "",
+  });
+  setShowEvidenceForm(true);
+}
+
+function openEditEvidenceForm(item: any) {
+  setEditingEvidenceId(item.Evidence_ID);
+  setEvidenceForm({
+    Evidence_Type: item.Evidence_Type,
+    Description: item.Description,
+    Collection_Date: new Date(item.Collection_Date).toISOString().split("T")[0],
+    Storage_Location: item.Storage_Location,
+    Case_ID: String(item.Case_ID),
+    Lab_ID: String(item.Lab_ID),
+  });
+  setShowEvidenceForm(true);
+}
+
+async function saveEvidence(event: React.FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+
+  try {
+    const response = await fetch("/api/evidence", {
+      method: editingEvidenceId ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...evidenceForm,
+        Case_ID: Number(evidenceForm.Case_ID),
+        Lab_ID: Number(evidenceForm.Lab_ID),
+        ...(editingEvidenceId ? { Evidence_ID: editingEvidenceId } : {}),
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Could not save evidence.");
+    }
+
+    const updatedResponse = await fetch("/api/evidence");
+    const updatedData = await updatedResponse.json();
+
+    if (!updatedResponse.ok || !updatedData.success) {
+      throw new Error("Evidence saved, but the list could not be refreshed.");
+    }
+
+    setEvidence(updatedData.evidence);
+    setShowEvidenceForm(false);
+    setEditingEvidenceId(null);
+    alert(data.message);
+  } catch (error) {
+    console.error("Saving evidence failed:", error);
+    alert(error instanceof Error ? error.message : "Could not save evidence.");
   }
 }
 
@@ -295,6 +462,95 @@ async function loadAuditHistory() {
           </section>
 
           <section id="evidence" className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-white p-6">
+  <div className="flex items-center justify-between gap-3">
+    <div>
+      <h3 className="font-bold">Evidence Management</h3>
+      <p className="mt-1 text-sm text-slate-500">
+        Add and manage collected evidence records.
+      </p>
+    </div>
+
+    <button
+      onClick={openAddEvidenceForm}
+      className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
+    >
+      + Add Evidence
+    </button>
+  </div>
+
+  {showEvidenceForm && (
+    <form onSubmit={saveEvidence} className="mt-5 space-y-4">
+      <h4 className="font-semibold">
+        {editingEvidenceId ? "Edit Evidence" : "Add New Evidence"}
+      </h4>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium">Evidence Type</label>
+        <select
+          required
+          value={evidenceForm.Evidence_Type}
+          onChange={(e) =>
+            setEvidenceForm({ ...evidenceForm, Evidence_Type: e.target.value })
+          }
+          className="w-full rounded-lg border border-slate-300 p-2"
+        >
+          <option value="Digital Evidence">Digital Evidence</option>
+          <option value="Physical Evidence">Physical Evidence</option>
+          <option value="Documentary Evidence">Documentary Evidence</option>
+          <option value="Biological Evidence">Biological Evidence</option>
+        </select>
+      </div>
+
+      {([
+        ["Description", "Description"],
+        ["Collection_Date", "Collection Date"],
+        ["Storage_Location", "Storage Location"],
+        ["Case_ID", "Case ID"],
+        ["Lab_ID", "Lab ID"],
+      ] as const).map(([field, label]) => (
+        <div key={field}>
+          <label className="mb-1 block text-sm font-medium">{label}</label>
+          <input
+            required
+            type={
+              field === "Collection_Date"
+                ? "date"
+                : field === "Case_ID" || field === "Lab_ID"
+                ? "number"
+                : "text"
+            }
+            min={
+              field === "Case_ID" || field === "Lab_ID" ? 1 : undefined
+            }
+            value={evidenceForm[field]}
+            onChange={(e) =>
+              setEvidenceForm({ ...evidenceForm, [field]: e.target.value })
+            }
+            className="w-full rounded-lg border border-slate-300 p-2"
+          />
+        </div>
+      ))}
+
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
+        >
+          {editingEvidenceId ? "Update Evidence" : "Save Evidence"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowEvidenceForm(false)}
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  )}
+</div>
             <article className="rounded-xl border border-slate-200 bg-white p-6">
               <h3 className="font-bold">Evidence Management</h3>
               <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -328,6 +584,21 @@ async function loadAuditHistory() {
         <p className="text-sm text-gray-600">
           Lab ID: {item.Lab_ID}
         </p>
+        <div className="mt-4 flex gap-2">
+          <button
+             onClick={() => openEditEvidenceForm(item)}
+             className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-medium text-white hover:bg-amber-600"
+          >
+           Edit
+         </button>
+
+         <button
+            onClick={() => deleteEvidence(item.Evidence_ID)}
+            className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
+        >
+             Delete
+        </button>
+       </div>
       </div>
     ))}
   </div>

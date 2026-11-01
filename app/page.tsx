@@ -2,18 +2,33 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Investigators from "./components/Investigators";
 import ImageAnalysis from "./components/ImageAnalysis";
+import Suspects from "./components/Suspects";
+import Victims from "./components/Victims";
 
 type CaseRecord = {
   Case_ID: number;
   Case_Title: string;
   Case_Type: string | null;
   Status: string | null;
+  Investigator_ID: number;
   Evidence_Count: number;
 };
 
 export default function Home() {
   const [cases, setCases] = useState<CaseRecord[]>([]);
+  const [investigators, setInvestigators] = useState<any[]>([]);
+  const [showCaseForm, setShowCaseForm] = useState(false);
+  const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
+
+const [caseForm, setCaseForm] = useState({
+  Case_Title: "",
+  Case_Type: "Cyber Crime",
+  Date_Reported: "",
+  Status: "Under Investigation",
+  Investigator_ID: "",
+});
   const [investigatorCount, setInvestigatorCount] = useState(0);
   const [reportCount, setReportCount] = useState(0);
   const [evidence, setEvidence] = useState<any[]>([]);
@@ -31,6 +46,18 @@ export default function Home() {
   const [error, setError] = useState("");
   const [reports, setReports] = useState<any[]>([]);
   const [auditHistory, setAuditHistory] = useState<any[]>([]);
+
+  const [analysts, setAnalysts] = useState<any[]>([]);
+  const [showReportForm, setShowReportForm] = useState(false);
+  const [editingReportId, setEditingReportId] = useState<number | null>(null);
+
+  const [reportForm, setReportForm] = useState({
+    Evidence_ID: "",
+    Analyst_ID: "",
+    Report_Date: "",
+    Findings: "",
+    Conclusion: "",
+  });
 
   
 async function updateCaseStatus(caseId: number, status: string) {
@@ -59,6 +86,204 @@ async function updateCaseStatus(caseId: number, status: string) {
   } catch (error) {
     console.error("Status update failed:", error);
     alert("Could not update case status. Please try again.");
+  }
+}
+
+function openAddCaseForm() {
+  setEditingCaseId(null);
+  setCaseForm({
+    Case_Title: "",
+    Case_Type: "Cyber Crime",
+    Date_Reported: "",
+    Status: "Under Investigation",
+    Investigator_ID: "",
+  });
+  setShowCaseForm(true);
+}
+
+function openEditCaseForm(item: any) {
+  setEditingCaseId(item.Case_ID);
+  setCaseForm({
+    Case_Title: item.Case_Title,
+    Case_Type: item.Case_Type || "Cyber Crime",
+    Date_Reported: String(item.Date_Reported).slice(0, 10),
+    Status: item.Status || "Under Investigation",
+    Investigator_ID: String(item.Investigator_ID),
+  });
+  setShowCaseForm(true);
+}
+
+async function saveCase(event: React.FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+
+  try {
+    const response = await fetch("/api/cases", {
+      method: editingCaseId ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...caseForm,
+        Investigator_ID: Number(caseForm.Investigator_ID),
+        ...(editingCaseId ? { Case_ID: editingCaseId } : {}),
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Could not save case.");
+    }
+
+    const updatedResponse = await fetch("/api/cases");
+    const updatedData = await updatedResponse.json();
+
+    if (!updatedResponse.ok || !updatedData.success) {
+      throw new Error("Case saved, but the list could not be refreshed.");
+    }
+
+    setCases(updatedData.cases);
+    setInvestigatorCount(updatedData.counts.investigatorCount);
+    setReportCount(updatedData.counts.reportCount);
+    setShowCaseForm(false);
+    setEditingCaseId(null);
+
+    alert(data.message);
+  } catch (error) {
+    console.error("Saving case failed:", error);
+    alert(error instanceof Error ? error.message : "Could not save case.");
+  }
+}
+
+async function deleteCase(caseId: number) {
+  const confirmed = window.confirm(
+    `Are you sure you want to delete CASE-${String(caseId).padStart(3, "0")}?`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const response = await fetch(`/api/cases?id=${caseId}`, {
+      method: "DELETE",
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Could not delete case.");
+    }
+
+    setCases((previousCases) =>
+      previousCases.filter((item) => item.Case_ID !== caseId)
+    );
+
+    alert(data.message);
+  } catch (error) {
+    console.error("Deleting case failed:", error);
+    alert(
+      error instanceof Error
+        ? error.message
+        : "Could not delete case. It may have linked records."
+    );
+  }
+}
+
+function openAddReportForm() {
+  setEditingReportId(null);
+  setReportForm({
+    Evidence_ID: "",
+    Analyst_ID: "",
+    Report_Date: "",
+    Findings: "",
+    Conclusion: "",
+  });
+  setShowReportForm(true);
+}
+
+function openEditReportForm(report: any) {
+  setEditingReportId(report.Report_ID);
+  setReportForm({
+    Evidence_ID: String(report.Evidence_ID),
+    Analyst_ID: String(report.Analyst_ID),
+    Report_Date: new Date(report.Report_Date).toISOString().split("T")[0],
+    Findings: report.Findings,
+    Conclusion: report.Conclusion,
+  });
+  setShowReportForm(true);
+}
+
+async function saveReport(event: React.FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+
+  try {
+    const response = await fetch("/api/reports", {
+      method: editingReportId ? "PUT" : "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...reportForm,
+        Evidence_ID: Number(reportForm.Evidence_ID),
+        Analyst_ID: Number(reportForm.Analyst_ID),
+        ...(editingReportId ? { Report_ID: editingReportId } : {}),
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Could not save report.");
+    }
+
+    const updatedResponse = await fetch("/api/reports");
+    const updatedData = await updatedResponse.json();
+
+    if (!updatedResponse.ok || !updatedData.success) {
+      throw new Error("Report saved, but the list could not be refreshed.");
+    }
+
+    setReports(updatedData.reports);
+    setShowReportForm(false);
+    setEditingReportId(null);
+    setReportForm({
+      Evidence_ID: "",
+      Analyst_ID: "",
+      Report_Date: "",
+      Findings: "",
+      Conclusion: "",
+    });
+
+    alert(data.message);
+  } catch (error) {
+    console.error("Saving report failed:", error);
+    alert(error instanceof Error ? error.message : "Could not save report.");
+  }
+}
+
+async function deleteReport(reportId: number) {
+  const confirmed = window.confirm(
+    `Are you sure you want to delete Report #${reportId}?`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const response = await fetch(`/api/reports?id=${reportId}`, {
+      method: "DELETE",
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Could not delete report.");
+    }
+
+    setReports((previousReports) =>
+      previousReports.filter((report) => report.Report_ID !== reportId)
+    );
+
+    alert(data.message);
+  } catch (error) {
+    console.error("Deleting report failed:", error);
+    alert(error instanceof Error ? error.message : "Could not delete report.");
   }
 }
 
@@ -256,6 +481,35 @@ useEffect(() => {
     }
   }
 
+  async function loadInvestigators() {
+  try {
+    const response = await fetch("/api/investigators");
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error("Could not load investigators.");
+    }
+
+    setInvestigators(data.investigators);
+  } catch (error) {
+    console.error("Investigators fetch failed:", error);
+  }
+}
+
+  async function loadAnalysts() {
+  try {
+    const response = await fetch("/api/analysts");
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error("Could not load analysts.");
+    }
+
+    setAnalysts(data.analysts);
+  } catch (error) {
+    console.error("Analysts fetch failed:", error);
+  }
+}
   
 async function loadReports() {
   try {
@@ -294,6 +548,8 @@ async function loadAuditHistory() {
 
   loadCases();
   loadEvidence();
+  loadInvestigators();
+  loadAnalysts();
   loadReports();
   loadAuditHistory();
 }, []);
@@ -407,10 +663,130 @@ async function loadAuditHistory() {
                   Records retrieved from MySQL
                 </p>
               </div>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-                {loading ? "Loading..." : `${cases.length} cases`}
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                  {loading ? "Loading..." : `${cases.length} cases`}
+                </span>
+
+                <button
+                   onClick={openAddCaseForm}
+                   className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
+                   >
+                    + Add Case
+                </button>
             </div>
+            </div>
+             
+             {showCaseForm && (
+  <form onSubmit={saveCase} className="space-y-4 border-b border-slate-200 p-5">
+    <h4 className="font-semibold">
+      {editingCaseId ? "Edit Case" : "Add New Case"}
+    </h4>
+
+    <div>
+      <label className="mb-1 block text-sm font-medium">Case Title</label>
+      <input
+        required
+        type="text"
+        value={caseForm.Case_Title}
+        onChange={(e) =>
+          setCaseForm({ ...caseForm, Case_Title: e.target.value })
+        }
+        className="w-full rounded-lg border border-slate-300 p-2"
+      />
+    </div>
+
+    <div>
+      <label className="mb-1 block text-sm font-medium">Case Type</label>
+      <select
+        required
+        value={caseForm.Case_Type}
+        onChange={(e) =>
+          setCaseForm({ ...caseForm, Case_Type: e.target.value })
+        }
+        className="w-full rounded-lg border border-slate-300 p-2"
+      >
+        <option value="Cyber Crime">Cyber Crime</option>
+        <option value="Property Crime">Property Crime</option>
+        <option value="Fraud">Fraud</option>
+        <option value="Violent Crime">Violent Crime</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+
+    <div>
+      <label className="mb-1 block text-sm font-medium">Date Reported</label>
+      <input
+        required
+        type="date"
+        value={caseForm.Date_Reported}
+        onChange={(e) =>
+          setCaseForm({ ...caseForm, Date_Reported: e.target.value })
+        }
+        className="w-full rounded-lg border border-slate-300 p-2"
+      />
+    </div>
+
+    <div>
+      <label className="mb-1 block text-sm font-medium">Status</label>
+      <select
+        required
+        value={caseForm.Status}
+        onChange={(e) =>
+          setCaseForm({ ...caseForm, Status: e.target.value })
+        }
+        className="w-full rounded-lg border border-slate-300 p-2"
+      >
+        <option value="Under Investigation">Under Investigation</option>
+        <option value="Evidence Collected">Evidence Collected</option>
+        <option value="Under Forensic Analysis">Under Forensic Analysis</option>
+        <option value="Closed">Closed</option>
+      </select>
+    </div>
+
+    <div>
+      <label className="mb-1 block text-sm font-medium">Investigator</label>
+      <select
+        required
+        value={caseForm.Investigator_ID}
+        onChange={(e) =>
+          setCaseForm({ ...caseForm, Investigator_ID: e.target.value })
+        }
+        className="w-full rounded-lg border border-slate-300 p-2"
+      >
+        <option value="">Select Investigator</option>
+        {investigators.map((investigator) => (
+         <option
+           key={investigator.Investigator_ID}
+           value={investigator.Investigator_ID}
+          >
+           {investigator.Name} - {investigator.Badge_No}
+        </option>
+      ))}
+      </select>
+    </div>
+
+    <div className="flex gap-3">
+      <button
+        type="submit"
+        className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
+      >
+        {editingCaseId ? "Update Case" : "Save Case"}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => {
+          setShowCaseForm(false);
+          setEditingCaseId(null);
+        }}
+        className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
+      >
+        Cancel
+      </button>
+    </div>
+  </form>
+)}
 
             {loading ? (
               <p className="p-5 text-sm text-slate-500">Loading case records...</p>
@@ -428,6 +804,7 @@ async function loadAuditHistory() {
                       <th className="px-5 py-4">Type</th>
                       <th className="px-5 py-4">Status</th>
                       <th className="px-5 py-4">Evidence</th>
+                      <th className="px-5 py-4">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -453,6 +830,23 @@ async function loadAuditHistory() {
                         </select>
                      </td>
                         <td className="px-5 py-4">{Number(item.Evidence_Count)}</td>
+                        <td className="whitespace-nowrap px-5 py-4">
+                           <div className="flex gap-2">
+                             <button
+                                onClick={() => openEditCaseForm(item)}
+                                className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-medium text-white hover:bg-amber-600"
+                                >
+                               Edit
+                            </button>
+
+                            <button
+                              onClick={() => deleteCase(item.Case_ID)}
+                               className="rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-700"
+                             >
+                               Delete
+                           </button>
+                      </div>
+                     </td>
                       </tr>
                     ))}
                   </tbody>
@@ -606,52 +1000,176 @@ async function loadAuditHistory() {
 </div>
             </article>
             <article id="reports" className="rounded-xl border border-slate-200 bg-white p-6">
-              <h3 className="font-bold">Forensic Reports</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Organize analyst findings and conclusions linked to evidence
-                records.
-              </p>
-              
-<div className="mt-4 space-y-4">
-  {reports.length === 0 ? (
-    <p className="text-sm text-slate-500">
-      No forensic reports found.
-    </p>
-  ) : (
-    reports.map((report) => (
-      <div
-        key={report.Report_ID}
-        className="rounded-lg border border-slate-200 p-4"
-      >
-        <h4 className="font-semibold">
-          Report #{report.Report_ID}
-        </h4>
-        <p className="mt-2 text-sm text-slate-600">
-          Case ID: CASE-{String(report.Case_ID).padStart(3, "0")}
-        </p>
-        <p className="text-sm text-slate-600">
-          Report Date:{" "}
-          {new Date(report.Report_Date).toLocaleDateString("en-IN")}
-        </p>
-        <p className="text-sm text-slate-600">
-          Analyst ID: {report.Analyst_ID}
-        </p>
-        <p className="mt-2 text-sm">
-          <strong>Findings:</strong> {report.Findings}
-        </p>
-        <p className="mt-2 text-sm">
-          <strong>Conclusion:</strong> {report.Conclusion}
-        </p>
+  <div className="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h3 className="font-bold">Forensic Reports</h3>
+      <p className="mt-2 text-sm text-slate-600">
+        Organize analyst findings and conclusions linked to evidence records.
+      </p>
+    </div>
+
+    <button
+      onClick={openAddReportForm}
+      className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
+    >
+      + Add Report
+    </button>
+  </div>
+
+  {showReportForm && (
+    <form onSubmit={saveReport} className="mt-5 space-y-4">
+      <h4 className="font-semibold">
+        {editingReportId ? "Edit Report" : "Add New Report"}
+      </h4>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium">Evidence</label>
+        <select
+          required
+          value={reportForm.Evidence_ID}
+          onChange={(e) =>
+            setReportForm({ ...reportForm, Evidence_ID: e.target.value })
+          }
+          className="w-full rounded-lg border border-slate-300 p-2"
+        >
+          <option value="">Select Evidence</option>
+          {evidence.map((item) => (
+            <option key={item.Evidence_ID} value={item.Evidence_ID}>
+              Evidence #{item.Evidence_ID} - {item.Evidence_Type}
+            </option>
+          ))}
+        </select>
       </div>
-    ))
+
+      <div>
+        <label className="mb-1 block text-sm font-medium">Analyst</label>
+        <select
+          required
+          value={reportForm.Analyst_ID}
+          onChange={(e) =>
+            setReportForm({ ...reportForm, Analyst_ID: e.target.value })
+          }
+          className="w-full rounded-lg border border-slate-300 p-2"
+        >
+          <option value="">Select Analyst</option>
+          {analysts.map((analyst) => (
+            <option key={analyst.Analyst_ID} value={analyst.Analyst_ID}>
+              {analyst.Name} - {analyst.Specialization}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium">Report Date</label>
+        <input
+          required
+          type="date"
+          value={reportForm.Report_Date}
+          onChange={(e) =>
+            setReportForm({ ...reportForm, Report_Date: e.target.value })
+          }
+          className="w-full rounded-lg border border-slate-300 p-2"
+        />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium">Findings</label>
+        <textarea
+          required
+          value={reportForm.Findings}
+          onChange={(e) =>
+            setReportForm({ ...reportForm, Findings: e.target.value })
+          }
+          className="w-full rounded-lg border border-slate-300 p-2"
+          rows={3}
+        />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium">Conclusion</label>
+        <textarea
+          required
+          value={reportForm.Conclusion}
+          onChange={(e) =>
+            setReportForm({ ...reportForm, Conclusion: e.target.value })
+          }
+          className="w-full rounded-lg border border-slate-300 p-2"
+          rows={3}
+        />
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
+        >
+          {editingReportId ? "Update Report" : "Save Report"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowReportForm(false)}
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   )}
-</div>
 
+  <div className="mt-4 space-y-4">
+    {reports.length === 0 ? (
+      <p className="text-sm text-slate-500">No forensic reports found.</p>
+    ) : (
+      reports.map((report) => (
+        <div
+          key={report.Report_ID}
+          className="rounded-lg border border-slate-200 p-4"
+        >
+          <h4 className="font-semibold">Report #{report.Report_ID}</h4>
 
+          <p className="mt-2 text-sm text-slate-600">
+            Case ID: CASE-{String(report.Case_ID).padStart(3, "0")}
+          </p>
 
+          <p className="text-sm text-slate-600">
+            Report Date:{" "}
+            {new Date(report.Report_Date).toLocaleDateString("en-IN")}
+          </p>
 
+          <p className="text-sm text-slate-600">
+            Analyst ID: {report.Analyst_ID}
+          </p>
 
-            </article>
+          <p className="mt-2 text-sm">
+            <strong>Findings:</strong> {report.Findings}
+          </p>
+
+          <p className="mt-2 text-sm">
+            <strong>Conclusion:</strong> {report.Conclusion}
+          </p>
+
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={() => openEditReportForm(report)}
+              className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-medium text-white hover:bg-amber-600"
+            >
+              Edit
+            </button>
+
+            <button
+              onClick={() => deleteReport(report.Report_ID)}
+              className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      ))
+    )}
+  </div>
+</article>
           </section>
             <section className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
   <h2 className="mb-4 text-xl font-semibold text-slate-800">
@@ -697,7 +1215,11 @@ async function loadAuditHistory() {
   )}
 </section>
 
+<Investigators />
+<Suspects />
+<Victims />
 <ImageAnalysis />
+
 
           <footer className="pb-4 text-center text-xs text-slate-500">
             Forensic Evidence Management System · Academic demonstration
